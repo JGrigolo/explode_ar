@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teste parede que se quebra + Flow Field</title>
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <!-- Simplex noise para o flow field -->
+  <script src="https://unpkg.com/simplex-noise@3.0.0/simplex-noise.js"></script>
+  <style>
+    body{margin:0;overflow:hidden;}
+    .hint{position:fixed;left:8px;top:8px;background:rgba(0,0,0,0.5);color:#fff;padding:8px;border-radius:6px;font-family:sans-serif;font-size:13px;z-index:10}
+    #triggerBtn{position:fixed;right:8px;top:8px;padding:10px 15px;font-size:14px;z-index:20;}
+  </style>
+</head>
+<body>
+<div class="hint">Clique no botão para simular o efeito de quebra da parede e mostrar o flow field.</div>
+<button id="triggerBtn">Ativar efeito</button>
+<a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true;">
+  <a-entity id="effects" wall-break></a-entity>
+  <a-entity camera position="0 0 3"></a-entity>
+</a-scene>
+
+<script>
+AFRAME.registerComponent('wall-break', {
+  init: function () {
+    const el = this.el;
+    this.scene = el.sceneEl;
+    this.renderer = this.scene.renderer;
+    this.camera = this.scene.camera;
+    this.boxGroup = new THREE.Group();
+    el.object3D.add(this.boxGroup);
+
+    this.particlesGroup = new THREE.Group();
+    el.object3D.add(this.particlesGroup);
+
+    this.capturing = false;
+
+    // canvas temporário para capturar frame do vídeo (aqui usamos só cor padrão)
+    this.captureCanvas = document.createElement('canvas');
+    this.captureCtx = this.captureCanvas.getContext('2d');
+    this.captureCanvas.width = 640;
+    this.captureCanvas.height = 480;
+    this.captureCtx.fillStyle = '#888';
+    this.captureCtx.fillRect(0,0,640,480);
+
+    // parâmetros (ajustáveis)
+    this.cols = 32; // número de blocos na horizontal
+    this.rows = 24; // número de blocos na vertical
+    this.blockSize = 0.12; // tamanho do bloco em metros
+    this.breakForce = 1.2;
+
+    // fluxo (flow field)
+    this.simplex = new SimplexNoise();
+    this.flowParticles = [];
+    this.particleCount = 1200;
+
+    document.getElementById('triggerBtn').addEventListener('click', () => this.onTrigger());
+
+    this.clock = new THREE.Clock();
+    this.animate = this.animate.bind(this);
+    this.animate();
+  },
+
+  onTrigger: function () {
+    if (this.capturing) return;
+    this.capturing = true;
+    this.createBlocksFromCapture();
+    this.createFlowField();
+  },
+
+  createBlocksFromCapture: function () {
+    // remove blocos antigos
+    while (this.boxGroup.children.length) this.boxGroup.remove(this.boxGroup.children[0]);
+
+    const imgW = this.captureCanvas.width;
+    const imgH = this.captureCanvas.height;
+    const cellW = Math.floor(imgW / this.cols);
+    const cellH = Math.floor(imgH / this.rows);
+
+    const offsetX = - (this.cols * this.blockSize) / 2 + this.blockSize/2;
+    const offsetY = (this.rows * this.blockSize) / 2 - this.blockSize/2;
+
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
+        const sx = x * cellW;
+        const sy = y * cellH;
+        const pixel = this.captureCtx.getImageData(sx, sy, 1, 1).data;
+        const color = new THREE.Color(pixel[0]/255, pixel[1]/255, pixel[2]/255);
+
+        const geo = new THREE.BoxGeometry(this.blockSize, this.blockSize, this.blockSize);
+        const mat = new THREE.MeshStandardMaterial({color: color, roughness:0.9, metalness:0.0});
+        const mesh = new THREE.Mesh(geo, mat);
+
+        mesh.position.set(offsetX + x * this.blockSize, offsetY - y * this.blockSize, 0);
+
+        mesh.userData = {
+          vel: new THREE.Vector3((Math.random()-0.5)*this.breakForce, (Math.random()-0.5)*this.breakForce, -Math.random()*this.breakForce*1.5),
+          rotVel: new THREE.Vector3(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1),
+          life: 0,
+          maxLife: 3 + Math.random()*2
+        };
+
+        this.boxGroup.add(mesh);
+      }
+    }
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    hemi.position.set(0,1,0.5);
+    this.boxGroup.add(hemi);
+  },
+
+  createFlowField: function () {
+    while (this.particlesGroup.children.length) this.particlesGroup.remove(this.particlesGroup.children[0]);
+    this.flowParticles.length = 0;
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(this.particleCount * 3);
+    const sizes = new Float32Array(this.particleCount);
+
+    for (let i=0;i<this.particleCount;i++){
+      const r = Math.random()*1.5 + 0.2;
+      const theta = Math.random()*Math.PI*2;
+      const x = Math.cos(theta)*r;
+      const y = (Math.random()-0.5)*2.0;
+      const z = -5 + (Math.random()-0.5)*1.0;
+      positions[i*3] = x; positions[i*3+1] = y; positions[i*3+2] = z;
+      sizes[i] = 2 + Math.random()*4;
+
+      this.flowParticles.push({pos:new THREE.Vector3(x,y,z), vel:new THREE.Vector3(), life:Math.random()*5});
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const material = new THREE.PointsMaterial({size:0.04, transparent:true, opacity:0.9});
+    const points = new THREE.Points(geometry, material);
+    points.frustumCulled = false;
+    this.particlesGroup.add(points);
+    this.pointsObj = points;
+  },
+
+  animate: function () {
+    requestAnimationFrame(this.animate);
+    const dt = this.clock.getDelta();
+
+    for (let i = this.boxGroup.children.length-1; i >=0; i--) {
+      const m = this.boxGroup.children[i];
+      if (!m.userData) continue;
+      m.userData.life += dt;
+      m.position.addScaledVector(m.userData.vel, dt);
+      m.rotation.x += m.userData.rotVel.x * dt;
+      m.rotation.y += m.userData.rotVel.y * dt;
+      m.rotation.z += m.userData.rotVel.z * dt;
+      m.userData.vel.y -= 0.9 * dt;
+      if (m.userData.life > m.userData.maxLife) {
+        if (m.material && m.material.opacity === undefined) { m.material.transparent = true; m.material.opacity = 1; }
+        m.material.opacity = Math.max(0, m.material.opacity - dt*0.6);
+        if (m.material.opacity <= 0.02) this.boxGroup.remove(m);
+      }
+    }
+
+    if (this.pointsObj) {
+      const positions = this.pointsObj.geometry.attributes.position.array;
+      for (let i=0;i<this.flowParticles.length;i++){
+        const p = this.flowParticles[i];
+        const s = 0.15;
+        const nx = this.simplex.noise3D(p.pos.x * s, p.pos.y * s, p.pos.z * s);
+        const ny = this.simplex.noise3D(p.pos.y * s + 10, p.pos.z * s + 10, p.pos.x * s + 10);
+        const nz = this.simplex.noise3D(p.pos.z * s + 20, p.pos.x * s + 20, p.pos.y * s + 20);
+        const vel = new THREE.Vector3(nx, ny*0.6, nz).multiplyScalar(0.6);
+        p.pos.addScaledVector(vel, dt);
+
+        const towardCenter = new THREE.Vector3().subVectors(new THREE.Vector3(0,0,-5), p.pos).multiplyScalar(0.02);
+        p.pos.addScaledVector(towardCenter, dt*12);
+
+        positions[i*3] = p.pos.x;
+        positions[i*3+1] = p.pos.y;
+        positions[i*3+2] = p.pos.z;
+
+        if (p.pos.distanceTo(new THREE.Vector3(0,0,-5)) > 6) {
+          p.pos.set((Math.random()-0.5)*2.5, (Math.random()-0.5)*2.5, -5 + (Math.random()-0.5));
+        }
+      }
+      this.pointsObj.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+});
+</script>
+</body>
+</html>
