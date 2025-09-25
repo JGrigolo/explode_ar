@@ -7,7 +7,7 @@
   <style>
     body{margin:0;overflow:hidden;}
     .hint{position:fixed;left:8px;top:8px;background:rgba(0,0,0,0.5);color:#fff;padding:8px;border-radius:6px;font-family:sans-serif;font-size:13px;z-index:10}
-    #triggerBtn{position:fixed;right:8px;top:8px;padding:10px 15px;font-size:14px;z-index:20;}
+    #triggerBtn{position:fixed;right:8px;top:8px;padding:10px 15px;font-size:14px;z-index:100;}
   </style>
 </head>
 <body>
@@ -21,7 +21,7 @@
 
   <a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true" arjs="sourceType: webcam; debugUIEnabled: false;">
     <a-entity id="effects" wall-break></a-entity>
-    <a-entity camera look-controls-enabled="false" position="0 0 3"></a-entity>
+    <a-entity camera look-controls-enabled="false" position="0 0 3" near="0.1" far="1000"></a-entity>
   </a-scene>
 
   <script>
@@ -46,21 +46,15 @@
         this.blockSize = 0.25;
         this.breakForce = 1.2;
 
-        // canvas temporário (cor padrão)
-        this.captureCanvas = document.createElement('canvas');
-        this.captureCtx = this.captureCanvas.getContext('2d');
-        this.captureCanvas.width = 640;
-        this.captureCanvas.height = 480;
-        this.captureCtx.fillStyle = '#888';
-        this.captureCtx.fillRect(0,0,640,480);
-
         document.getElementById('triggerBtn').addEventListener('click', () => this.onTrigger());
 
         this.animate = this.animate.bind(this);
         requestAnimationFrame(() => {
-          // aguarda o AR.js inicializar o sistema antes de acessar a câmera
           const sceneEl = this.el.sceneEl;
           sceneEl.addEventListener('loaded', () => {
+            // força o botão para frente de qualquer câmera ou zoom
+            document.getElementById('triggerBtn').style.position = 'fixed';
+            document.getElementById('triggerBtn').style.zIndex = '100';
             this.camera = sceneEl.camera;
             this.animate();
           });
@@ -132,7 +126,6 @@
         const dt = this.clock.getDelta();
         this.elapsed += dt;
 
-        // animação dos blocos
         for(let i=this.boxGroup.children.length-1;i>=0;i--){
           const m=this.boxGroup.children[i];
           if(!m.userData) continue;
@@ -148,7 +141,6 @@
           }
         }
 
-        // animação flowfield
         if(this.pointsObj){
           const positions = this.pointsObj.geometry.attributes.position.array;
           for(let i=0;i<this.flowParticles.length;i++){
