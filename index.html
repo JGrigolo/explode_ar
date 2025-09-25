@@ -2,12 +2,25 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Parede que se quebra + Flow Field</title>
   <style>
     body{margin:0;overflow:hidden;}
-    .hint{position:fixed;left:8px;top:8px;background:rgba(0,0,0,0.5);color:#fff;padding:8px;border-radius:6px;font-family:sans-serif;font-size:13px;z-index:10}
-    #triggerBtn{position:fixed;right:8px;top:8px;padding:10px 15px;font-size:14px;z-index:100;}
+    .hint{position:fixed;left:8px;top:8px;background:rgba(0,0,0,0.5);color:#fff;padding:8px;border-radius:6px;font-family:sans-serif;font-size:13px;z-index:1000;}
+    #triggerBtn{
+      position:fixed;
+      bottom:20px;
+      left:50%;
+      transform:translateX(-50%);
+      padding:14px 24px;
+      font-size:16px;
+      z-index:1000;
+      background:#ff6600;
+      color:#fff;
+      border:none;
+      border-radius:8px;
+      box-shadow:0 4px 8px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
@@ -40,24 +53,21 @@
         this.clock = new THREE.Clock();
         this.elapsed = 0;
 
-        // parâmetros dos blocos
         this.cols = 16;
         this.rows = 12;
         this.blockSize = 0.25;
         this.breakForce = 1.2;
 
-        document.getElementById('triggerBtn').addEventListener('click', () => this.onTrigger());
+        const triggerBtn = document.getElementById('triggerBtn');
+        triggerBtn.addEventListener('click', () => this.onTrigger());
 
         this.animate = this.animate.bind(this);
-        requestAnimationFrame(() => {
+
+        // aguarda o AR.js e A-Frame carregarem completamente antes de acessar a câmera
+        window.addEventListener('load', () => {
           const sceneEl = this.el.sceneEl;
-          sceneEl.addEventListener('loaded', () => {
-            // força o botão para frente de qualquer câmera ou zoom
-            document.getElementById('triggerBtn').style.position = 'fixed';
-            document.getElementById('triggerBtn').style.zIndex = '100';
-            this.camera = sceneEl.camera;
-            this.animate();
-          });
+          this.camera = sceneEl.camera;
+          this.animate();
         });
       },
 
